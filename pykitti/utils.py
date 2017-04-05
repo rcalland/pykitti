@@ -49,11 +49,15 @@ def read_calib_file(filepath):
 
     with open(filepath, 'r') as f:
         for line in f.readlines():
-            key, value = line.split(':', 1)
+            #key, value = line.split(':', 1)
+            line = line.split()
+            key = line[0].strip(":")
+            value = line[1:]
+
             # The only non-float values in these files are dates, which
             # we don't care about anyway
             try:
-                data[key] = np.array([float(x) for x in value.split()])
+                data[key] = np.array([float(x) for x in value])
             except ValueError:
                 pass
 
@@ -94,3 +98,36 @@ def load_velo_scans(velo_files):
         scan_list.append(scan.reshape((-1, 4)))
 
     return scan_list
+
+def _poses_from_oxts(oxts_packets):
+    """Helper method to compute SE(3) pose matrices from OXTS packets."""
+    er = 6378137.  # earth radius (approx.) in meters
+
+    # compute scale from first lat value
+    scale = np.cos(oxts_packets[0].lat * np.pi / 180.)
+
+    t_0 = []    # initial position
+    poses = []  # list of poses computed from oxts
+    for packet in oxts_packets:
+        # Use a Mercator projection to get the translation vector
+        tx = scale * packet.lon * np.pi * er / 180.
+        ty = scale * er * \
+            np.log(np.tan((90. + packet.lat) * np.pi / 360.))
+        tz = packet.alt
+        t = np.array([tx, ty, tz])
+
+        # We want the initial position to be the origin, but keep the ENU
+        # coordinate system
+        if len(t_0) == 0:
+            t_0 = t
+
+        # Use the Euler angles to get the rotation matrix
+        Rx = rotx(packet.roll)
+        Ry = roty(packet.pitch)
+        Rz = rotz(packet.yaw)
+        R = Rz.dot(Ry.dot(Rx))
+
+        # Combine the translation and rotation into a homogeneous transform
+        poses.append(transform_from_rot_trans(R, t - t_0))
+
+    return poses
