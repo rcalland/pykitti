@@ -35,6 +35,13 @@ def rotz(t):
                      [s,  c,  0],
                      [0,  0,  1]])
 
+def pad3x4_to_4x4(matrix):
+    #print(matrix.shape)
+    #matrix = np.vstack((matrix, [0.0, 0.0, 0.0]))
+    #print(matrix)
+    #tmp = np.array([[0.0, 0.0, 0.0, 1.0]])
+    return np.vstack((matrix, [0, 0, 0, 1]))
+
 
 def transform_from_rot_trans(R, t):
     """Transforation matrix from rotation matrix and translation vector."""
@@ -50,6 +57,8 @@ def read_calib_file(filepath):
     with open(filepath, 'r') as f:
         for line in f.readlines():
             #key, value = line.split(':', 1)
+            # some calib files do not delimit with a ":", so instead, split all entries into an array, take the first element as
+            # the key, and strip out any ":"
             line = line.split()
             key = line[0].strip(":")
             value = line[1:]
@@ -99,7 +108,7 @@ def load_velo_scans(velo_files):
 
     return scan_list
 
-def _poses_from_oxts(oxts_packets):
+def _poses_from_oxts(oxts_packets, camera_basis=False):
     """Helper method to compute SE(3) pose matrices from OXTS packets."""
     er = 6378137.  # earth radius (approx.) in meters
 
@@ -107,6 +116,9 @@ def _poses_from_oxts(oxts_packets):
     scale = np.cos(oxts_packets[0].lat * np.pi / 180.)
 
     t_0 = []    # initial position
+    #Rr_0 = []   # initial roll, pitch and yaw
+    #Rp_0 = []
+    #Ry_0 = []
     poses = []  # list of poses computed from oxts
     for packet in oxts_packets:
         # Use a Mercator projection to get the translation vector
@@ -120,6 +132,9 @@ def _poses_from_oxts(oxts_packets):
         # coordinate system
         if len(t_0) == 0:
             t_0 = t
+            #r_0 = packet.roll
+            #p_0 = packet.pitch
+            #y_0 = packet.yaw
 
         # Use the Euler angles to get the rotation matrix
         Rx = rotx(packet.roll)
@@ -127,7 +142,10 @@ def _poses_from_oxts(oxts_packets):
         Rz = rotz(packet.yaw)
         R = Rz.dot(Ry.dot(Rx))
 
+        # optionally rotate into camera basis
+        T = t - t_0
+
         # Combine the translation and rotation into a homogeneous transform
-        poses.append(transform_from_rot_trans(R, t - t_0))
+        poses.append(transform_from_rot_trans(R, T))
 
     return poses

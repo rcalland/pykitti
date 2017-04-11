@@ -9,9 +9,6 @@ import numpy as np
 
 import pykitti.utils as utils
 
-__author__ = "Richard Calland"
-__email__ = "calland@preferred.jp"
-
 class tracking:
 
     def __init__(self, base_path, sequence, train=True, frame_range=None):
@@ -58,6 +55,19 @@ class tracking:
         data["cam2imgL"] = np.matmul(R_rect, P2.T)
         # inverse transformation
         data["imgL2cam"] = np.linalg.inv(data["cam2imgL"])
+        data["P2"] = P2
+
+        # convert GPS/IMU coords into camera
+        Tr_velo_cam = np.reshape(filedata["Tr_velo_cam"], (3,4))
+        Tr_imu_velo = np.reshape(filedata["Tr_imu_velo"], (3,4))
+        data["Tr_velo_cam"] = utils.pad3x4_to_4x4(Tr_velo_cam)
+        data["Tr_imu_velo"] = utils.pad3x4_to_4x4(Tr_imu_velo)
+
+        #tmp = np.matmul(Tr_velo_cam, Tr_imu_velo)
+        #data["imu2cam"] = Tr_velo_cam.dot(Tr_imu_velo)
+        #tmp = np.matmul(R_rect, tmp)
+        #data["imu2cam"] = np.matmul(tmp, P2.T)
+        #data["cam2imu"] = np.linalg.inv(data["imu2cam"])
 
         self.calib = namedtuple('CalibData', data.keys())(*data.values())
 
@@ -135,7 +145,7 @@ class tracking:
             oxts_packets = [oxts_packets[i] for i in self.frame_range]
 
         # Precompute the IMU poses in the world frame
-        T_w_imu = utils._poses_from_oxts(oxts_packets)
+        T_w_imu = utils._poses_from_oxts(oxts_packets, camera_basis=False)
 
         # Bundle into an easy-to-access structure
         OxtsData = namedtuple('OxtsData', 'packet, T_w_imu')
@@ -143,7 +153,7 @@ class tracking:
         for (p, T) in zip(oxts_packets, T_w_imu):
             self.oxts.append(OxtsData(p, T))
 
-        print('done.')
+        print('done. {} frames.'.format(len(self.oxts)))
 
     def load_rgb(self, **kwargs):
         """Load RGB stereo images from file.
@@ -168,5 +178,6 @@ class tracking:
         print('Found ' + str(len(imL_files)) + ' image pairs...')
 
         self.rgb = utils.load_stereo_pairs(imL_files, imR_files, **kwargs)
+        self.img_shape = self.rgb[0].left.shape
 
         print('done.')
