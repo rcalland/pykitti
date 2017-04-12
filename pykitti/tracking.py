@@ -52,22 +52,18 @@ class tracking:
         R_rect = np.concatenate((R_rect, tmp.T), axis=1)
 
         # transform from camera coordinates into left image coords 
-        data["cam2imgL"] = np.matmul(R_rect, P2.T)
+        data["T_cam_imgL"] = np.matmul(R_rect, P2.T)
         # inverse transformation
-        data["imgL2cam"] = np.linalg.inv(data["cam2imgL"])
-        data["P2"] = P2
+        data["T_imgL_cam"] = np.linalg.inv(data["T_cam_imgL"])
 
-        # convert GPS/IMU coords into camera
-        Tr_velo_cam = np.reshape(filedata["Tr_velo_cam"], (3,4))
-        Tr_imu_velo = np.reshape(filedata["Tr_imu_velo"], (3,4))
-        data["Tr_velo_cam"] = utils.pad3x4_to_4x4(Tr_velo_cam)
-        data["Tr_imu_velo"] = utils.pad3x4_to_4x4(Tr_imu_velo)
+        # convert GPS/IMU coords into camera via velo
+        T_velo_cam = np.reshape(filedata["Tr_velo_cam"], (3,4))
+        T_imu_velo = np.reshape(filedata["Tr_imu_velo"], (3,4))
 
-        #tmp = np.matmul(Tr_velo_cam, Tr_imu_velo)
-        #data["imu2cam"] = Tr_velo_cam.dot(Tr_imu_velo)
-        #tmp = np.matmul(R_rect, tmp)
-        #data["imu2cam"] = np.matmul(tmp, P2.T)
-        #data["cam2imu"] = np.linalg.inv(data["imu2cam"])
+        data["T_velo_cam"] = utils.pad3x4_to_4x4(T_velo_cam)
+        data["T_imu_velo"] = utils.pad3x4_to_4x4(T_imu_velo)        
+        data["T_imu_cam"] = data["T_imu_velo"].dot(data["T_velo_cam"])
+        data["T_cam_imu"] = np.linalg.inv(data["T_imu_cam"])
 
         self.calib = namedtuple('CalibData', data.keys())(*data.values())
 
@@ -105,8 +101,9 @@ class tracking:
                 self.labels.append(data)
 
         # restrict to the frame selection
+
         if self.frame_range:
-            self.labels = [labels[i] for i in self.frame_range]
+            self.labels = [x for x in self.labels if x.frame in self.frame_range]
 
         print("done.")
 
@@ -141,8 +138,9 @@ class tracking:
                 oxts_packets.append(data)
 
         # restrict to the frame selection
-        if self.frame_range:
-            oxts_packets = [oxts_packets[i] for i in self.frame_range]
+        # TODO: enable this feature
+        #if self.frame_range:
+        #    oxts_packets = [oxts_packets[i] for i in self.frame_range]
 
         # Precompute the IMU poses in the world frame
         T_w_imu = utils._poses_from_oxts(oxts_packets, camera_basis=False)
