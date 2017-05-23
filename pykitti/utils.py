@@ -36,15 +36,11 @@ def rotz(t):
                      [0,  0,  1]])
 
 def pad3x4_to_4x4(matrix):
-    #print(matrix.shape)
-    #matrix = np.vstack((matrix, [0.0, 0.0, 0.0]))
-    #print(matrix)
-    #tmp = np.array([[0.0, 0.0, 0.0, 1.0]])
     return np.vstack((matrix, [0, 0, 0, 1]))
 
 
 def transform_from_rot_trans(R, t):
-    """Transforation matrix from rotation matrix and translation vector."""
+    """Transformation matrix from rotation matrix and translation vector."""
     R = R.reshape(3, 3)
     t = t.reshape(3, 1)
     return np.vstack((np.hstack([R, t]), [0, 0, 0, 1]))
@@ -108,7 +104,7 @@ def load_velo_scans(velo_files):
 
     return scan_list
 
-def _poses_from_oxts(oxts_packets, camera_basis=False):
+def poses_from_oxts(oxts_packets):
     """Helper method to compute SE(3) pose matrices from OXTS packets."""
     er = 6378137.  # earth radius (approx.) in meters
 
@@ -146,6 +142,7 @@ def _poses_from_oxts(oxts_packets, camera_basis=False):
         T = t - t_0
 
         # Combine the translation and rotation into a homogeneous transform
+        # This matrix transforms from IMU to world coordinates.
         poses.append(transform_from_rot_trans(R, T))
 
     return poses
