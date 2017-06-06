@@ -38,31 +38,28 @@ class tracking:
 
         # Load the calibration file
         calib_filepath = os.path.join(self.calib_path, "{}.txt".format(self.sequence))
-        
+
         filedata = utils.read_calib_file(calib_filepath)
 
-        P2 = np.reshape(filedata["P2"], (3,4))
-        P2 = np.vstack((P2, [0.0, 0.0, 0.0, 1.0]))
+        P2 = utils.pad3x4_to_4x4(np.reshape(filedata["P2"], (3,4)))
 
         R_rect = np.reshape(filedata["R_rect"], (3,3))
-        
-        # need to pad R0_rect to a (4,4) matrix
-        R_rect = np.vstack((R_rect, [0.0, 0.0, 0.0]))
-        tmp = np.array([[0.0, 0.0, 0.0, 1.0]])
-        R_rect = np.concatenate((R_rect, tmp.T), axis=1)
+        R_rect = utils.pad3x4_to_4x4(np.hstack((R_rect, np.array([0.0, 0.0, 0.0])[:, None])))
 
-        # transform from camera coordinates into left image coords 
-        data["T_cam_imgL"] = np.matmul(R_rect, P2.T)
-        # inverse transformation
+        data["P2"] = P2
+        data["R_rect"] = R_rect
+
+        # transform from left camera coordinates into left image coords
+        data["T_cam_imgL"] = np.dot(P2, R_rect)
         data["T_imgL_cam"] = np.linalg.inv(data["T_cam_imgL"])
 
-        # convert GPS/IMU coords into camera via velo
         T_velo_cam = np.reshape(filedata["Tr_velo_cam"], (3,4))
         T_imu_velo = np.reshape(filedata["Tr_imu_velo"], (3,4))
 
         data["T_velo_cam"] = utils.pad3x4_to_4x4(T_velo_cam)
-        data["T_imu_velo"] = utils.pad3x4_to_4x4(T_imu_velo)        
-        data["T_imu_cam"] = data["T_imu_velo"].dot(data["T_velo_cam"])
+        data["T_imu_velo"] = utils.pad3x4_to_4x4(T_imu_velo)
+        # convert GPS/IMU coords into camera via velo
+        data["T_imu_cam"] = data["T_velo_cam"].dot(data["T_imu_velo"])
         data["T_cam_imu"] = np.linalg.inv(data["T_imu_cam"])
 
         self.calib = namedtuple('CalibData', data.keys())(*data.values())
@@ -74,7 +71,7 @@ class tracking:
             print("No labels found.")
             return
 
-        print("Loading labels from " + self.sequence + "...")        
+        print("Loading labels from " + self.sequence + "...")
 
         FrameLabel = namedtuple("FrameLabel",
                                 "frame, track_id, type, truncated, " +
@@ -96,7 +93,7 @@ class tracking:
                 line[:2] = [int(float(x)) for x in line[:2]]
                 line[3:5] = [int(float(x)) for x in line[3:5]]
                 line[5:] = [float(x) for x in line[5:]]
-                
+
                 data = FrameLabel(*line)
                 self.labels.append(data)
 
@@ -129,7 +126,7 @@ class tracking:
         with open(filename, 'r') as f:
             for line in f.readlines():
                 line = line.split()
-                
+
                 # Last five entries are flags and counts
                 line[:-5] = [float(x) for x in line[:-5]]
                 line[-5:] = [int(float(x)) for x in line[-5:]]
@@ -143,12 +140,12 @@ class tracking:
         #    oxts_packets = [oxts_packets[i] for i in self.frame_range]
 
         # Precompute the IMU poses in the world frame
-        T_w_imu = utils._poses_from_oxts(oxts_packets, camera_basis=False)
+        T_imu_w = utils.poses_from_oxts(oxts_packets)
 
         # Bundle into an easy-to-access structure
-        OxtsData = namedtuple('OxtsData', 'packet, T_w_imu')
+        OxtsData = namedtuple('OxtsData', 'packet, T_imu_w')
         self.oxts = []
-        for (p, T) in zip(oxts_packets, T_w_imu):
+        for (p, T) in zip(oxts_packets, T_imu_w):
             self.oxts.append(OxtsData(p, T))
 
         print('done. {} frames.'.format(len(self.oxts)))
